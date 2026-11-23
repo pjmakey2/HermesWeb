@@ -97,7 +97,7 @@ Botón **🖼 Imágenes** (varias a la vez), `Ctrl+V` con una imagen en el porta
 
 ### Paneles (ver varias sesiones a la vez)
 Los botones de distribución (arriba a la derecha) reparten la pantalla: una sesión, dos apiladas,
-dos lado a lado, tres columnas o grilla 2×2. Cada panel tiene su barra con nombre, carpeta y
+dos lado a lado, tres (dos arriba y una abajo a todo el ancho) o grilla 2×2. Cada panel tiene su barra con nombre, carpeta y
 tamaño; el panel enfocado se resalta y es el que reciben las acciones de la barra superior
 (imágenes, renombrar, cerrar). Al elegir una sesión en la barra lateral, va al panel enfocado
 (si ya está visible en otro panel, solo se enfoca). La × de un panel lo vacía sin cerrar la sesión.
@@ -112,7 +112,7 @@ En la web: botón **⌨ Atajos** (abajo a la izquierda), `Alt+H`, o `?` fuera de
 | `Alt+N` | nueva sesión (en «Guardadas»: nueva sesión guardada) |
 | `Alt+G` | alternar Terminales / Guardadas |
 | `Alt+S` | contraer / mostrar la barra lateral |
-| `Alt+Shift+1…5` | distribución: una · dos apiladas · dos lado a lado · tres · 2×2 |
+| `Alt+Shift+1…5` | distribución: una · dos apiladas · dos lado a lado · tres (2 arriba + 1 abajo) · 2×2 |
 | `Alt+Shift+flechas` | mover el foco al panel de al lado |
 | `Alt+Z` (o doble clic en la barra del panel) | maximizar / restaurar el panel enfocado |
 | Rueda del mouse | scroll por el historial (modo copia de tmux; `q` para salir) |

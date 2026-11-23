@@ -29,10 +29,11 @@ const LAYOUTS = {
   single: { n: 1, label: 'Una sesión' },
   rows2:  { n: 2, label: 'Dos, una arriba de otra' },
   cols2:  { n: 2, label: 'Dos, lado a lado' },
-  cols3:  { n: 3, label: 'Tres columnas' },
+  tri:    { n: 3, label: 'Tres: dos arriba y una abajo' },
   grid4:  { n: 4, label: 'Grilla 2×2' },
 };
 const savedLayout = JSON.parse(localStorage.getItem('hermes.layout') || '{}');
+if (savedLayout.layout === 'cols3') savedLayout.layout = 'tri'; // nombre anterior
 let layout = LAYOUTS[savedLayout.layout] ? savedLayout.layout : 'single';
 let panes = Array.isArray(savedLayout.panes) ? savedLayout.panes : [];
 let focused = Number.isInteger(savedLayout.focused) ? savedLayout.focused : 0;
@@ -409,7 +410,7 @@ document.addEventListener('click', () => {
 }, { once: true });
 
 // ---------- atajos ----------
-const LAYOUT_KEYS = ['single', 'rows2', 'cols2', 'cols3', 'grid4'];
+const LAYOUT_KEYS = ['single', 'rows2', 'cols2', 'tri', 'grid4'];
 function openKeys() { const d = $('#dlg-keys'); if (!d.open) d.showModal(); }
 $('#btn-keys').onclick = openKeys;
 $('#keys-close').onclick = () => $('#dlg-keys').close();

@@ -92,7 +92,8 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 #grid.l-single { grid-template: 1fr / 1fr; }
 #grid.l-rows2  { grid-template: 1fr 1fr / 1fr; }
 #grid.l-cols2  { grid-template: 1fr / 1fr 1fr; }
-#grid.l-cols3  { grid-template: 1fr / 1fr 1fr 1fr; }
+#grid.l-tri    { grid-template: 1fr 1fr / 1fr 1fr; }
+#grid.l-tri:not(.zoomed) > .pane:nth-child(3) { grid-column: 1 / -1; } /* la de abajo ocupa todo el ancho */
 #grid.l-grid4  { grid-template: 1fr 1fr / 1fr 1fr; }
 #grid.zoomed   { grid-template: 1fr / 1fr; }
 #grid.zoomed .pane:not(.focused) { display: none; }
