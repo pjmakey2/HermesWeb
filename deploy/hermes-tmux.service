@@ -1,0 +1,17 @@
+# Servidor tmux de HermesWeb en el HOST. Las sesiones de claude viven acá; el contenedor
+# Docker solo se conecta a este socket. scripts/deploy.sh lo instala en ~/.config/systemd/user.
+# Para que arranque con la máquina sin iniciar sesión:  loginctl enable-linger $USER
+[Unit]
+Description=HermesWeb: servidor tmux del host (sesiones de Claude Code)
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStartPre=/usr/bin/mkdir -p %h/.local/state/hermesweb
+ExecStart=/usr/bin/tmux -S %h/.local/state/hermesweb/tmux.sock -f %h/.config/hermesweb/tmux.conf start-server
+# Detener/reiniciar el servicio NO mata las sesiones abiertas
+KillMode=process
+
+[Install]
+WantedBy=default.target

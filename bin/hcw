@@ -16,10 +16,11 @@
 #   hcw help
 set -euo pipefail
 
-SOCKET="${HERMES_TMUX_SOCKET:-hermes}"
+SOCKET="${HERMES_TMUX_SOCKET:-$HOME/.local/state/hermesweb/tmux.sock}"
 SELF="$(readlink -f "${BASH_SOURCE[0]}")"
 CONF="$(dirname "$SELF")/../tmux.conf"
-T=(tmux -L "$SOCKET" -f "$CONF")
+mkdir -p "$(dirname "$SOCKET")"
+T=(tmux -S "$SOCKET" -f "$CONF")
 
 usage() { sed -n '2,16p' "$SELF" | sed 's/^# \{0,1\}//'; }
 
@@ -31,7 +32,7 @@ list() {
 
 attach() {
   if [[ -n "${TMUX:-}" ]]; then
-    "${T[@]}" switch-client -t "=$1" 2>/dev/null || { echo "Ya estás dentro de tmux; usa: tmux -L $SOCKET attach -t $1" >&2; exit 1; }
+    "${T[@]}" switch-client -t "=$1" 2>/dev/null || { echo "Ya estás dentro de tmux; usa: tmux -S $SOCKET attach -t $1" >&2; exit 1; }
   else
     exec "${T[@]}" attach-session -t "=$1"
   fi
@@ -68,7 +69,7 @@ if [[ "${1:-}" == "-n" ]]; then
   name="${2:?Falta el nombre después de -n}"; shift 2
 fi
 
-if [[ -n "${TMUX:-}" && "${TMUX%%,*}" == *"/$SOCKET" ]]; then
+if [[ -n "${TMUX:-}" && "${TMUX%%,*}" == "$SOCKET" ]]; then
   # ya estamos dentro de una sesión de HermesWeb: simplemente correr claude
   exec claude "$@"
 fi

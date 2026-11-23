@@ -1,0 +1,24 @@
+# Verifica que la imagen Docker construye y que el código carga (sin publicar nada).
+# El deploy lo hace scripts/release.sh / scripts/deploy.sh en cada máquina (están detrás de NAT/Tailscale).
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sintaxis
+        run: for f in server.js auth.js set-password.js lib/*.js bin/hermes-cli.js scripts/*.js public/*.js; do node --check "$f"; done
+      - name: Scripts bash
+        run: bash -n bin/hcw scripts/*.sh
+      - name: Imagen Docker
+        run: docker build --build-arg VERSION=ci -t hermesweb:ci .
+      - name: Arranca
+        run: |
+          docker run --rm hermesweb:ci node -e "import('node-pty').then(()=>console.log('node-pty ok'))"
+          docker run --rm hermesweb:ci tmux -V

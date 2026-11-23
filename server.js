@@ -4,7 +4,7 @@ import pty from 'node-pty';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createServer } from 'node:http';
-import { statSync } from 'node:fs';
+import { statSync, copyFileSync, mkdirSync } from 'node:fs';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { getDb, findSession } from './lib/db.js';
@@ -22,8 +22,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const HOST = process.env.HOST || '127.0.0.1';
 const PORT = Number(process.env.PORT || 7681);
-const SOCKET = process.env.HERMES_TMUX_SOCKET || 'hermes';
-const TMUX_CONF = path.join(__dirname, 'tmux.conf');
+// Socket tmux por ruta (no -L): así el contenedor Docker y el host comparten el mismo servidor.
+const SOCKET = process.env.HERMES_TMUX_SOCKET || path.join(homedir(), '.local', 'state', 'hermesweb', 'tmux.sock');
+mkdirSync(path.dirname(SOCKET), { recursive: true, mode: 0o700 });
+// En Docker el servidor tmux corre en el HOST: la config tiene que estar en una ruta que el host
+// vea igual (~/.config/hermesweb/tmux.conf, montada en la misma ruta).
+const IN_DOCKER = !!process.env.HERMES_IN_DOCKER;
+let TMUX_CONF = path.join(__dirname, 'tmux.conf');
+if (IN_DOCKER) {
+  mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
+  const shared = path.join(CONFIG_DIR, 'tmux.conf');
+  copyFileSync(TMUX_CONF, shared);
+  TMUX_CONF = shared;
+}
 const SHELL = process.env.SHELL || '/bin/bash';
 
 // ---------- autenticación ----------
@@ -65,9 +76,21 @@ const sameOrigin = req => {
 };
 
 // ---------- tmux ----------
-const tmux = (...args) => exec('tmux', ['-L', SOCKET, '-f', TMUX_CONF, ...args], {
+const tmuxRaw = (...args) => exec('tmux', ['-S', SOCKET, '-f', TMUX_CONF, ...args], {
   env: { ...process.env, TERM: 'xterm-256color' },
 });
+// En Docker nunca hay que arrancar el servidor tmux dentro del contenedor (las sesiones
+// morirían con él y claude correría sin tus herramientas): new-session exige que ya exista.
+async function tmux(...args) {
+  if (IN_DOCKER && args[0] === 'new-session') {
+    try { await tmuxRaw('show-options', '-s', 'exit-empty'); }
+    catch {
+      throw new Error('El servidor tmux del host no está corriendo. En el host: ' +
+        `tmux -S ${SOCKET} -f ${TMUX_CONF} start-server  (o scripts/deploy.sh, o el servicio hermes-tmux)`);
+    }
+  }
+  return tmuxRaw(...args);
+}
 
 const SEP = '|~|'; // tmux escapa caracteres de control en -F, usar ASCII imprimible
 const FIELDS = [
@@ -99,7 +122,7 @@ async function listSessions() {
     await Promise.all(list.map(async s => { s.state = await detectState(s); }));
     return list;
   } catch (e) {
-    if (/no server running|error connecting|No such file/i.test(e.stderr || e.message)) return [];
+    if (/no server running|error connecting|No such file|no current target/i.test(e.stderr || e.message)) return [];
     throw e;
   }
 }
@@ -304,7 +327,7 @@ wss.on('connection', (ws, url) => {
   const rows = Math.max(5, Math.min(200, Number(url.searchParams.get('rows')) || 40));
   if (!validName(name)) return ws.close(4000, 'bad session');
 
-  const term = pty.spawn('tmux', ['-L', SOCKET, '-f', TMUX_CONF, 'attach-session', '-t', `=${name}`], {
+  const term = pty.spawn('tmux', ['-S', SOCKET, '-f', TMUX_CONF, 'attach-session', '-t', `=${name}`], {
     name: 'xterm-256color',
     cols, rows,
     cwd: homedir(),
@@ -339,5 +362,5 @@ getDb();
 server.listen(PORT, HOST, () => {
   const shown = HOST === '0.0.0.0' ? 'localhost' : HOST;
   console.log(`HermesWeb escuchando en http://${shown}:${PORT}`);
-  console.log(`Desde una terminal: tmux -L ${SOCKET} attach -t <sesion>`);
+  console.log(`Desde una terminal: hcw a <sesion>   (tmux -S ${SOCKET} attach -t <sesion>)`);
 });

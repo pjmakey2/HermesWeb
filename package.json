@@ -1,13 +1,14 @@
 {
   "name": "hermesweb",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "version": "0.0.0",
+  "description": "Web en tiempo real para sesiones de Claude Code en tmux",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "echo \"sin tests\"",
     "start": "node --disable-warning=ExperimentalWarning server.js",
     "set-password": "node set-password.js",
-    "import-mwd": "node --disable-warning=ExperimentalWarning scripts/import-mwd.js"
+    "import-mwd": "node --disable-warning=ExperimentalWarning scripts/import-mwd.js",
+    "release": "scripts/release.sh",
+    "deploy": "scripts/deploy.sh"
   },
   "keywords": [],
   "author": "",

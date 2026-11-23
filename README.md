@@ -8,6 +8,25 @@ Cada sesión es una terminal real (pty + xterm.js) respaldada por **tmux**, así
 
 ## Uso
 
+### Con Docker (recomendado)
+
+```bash
+scripts/deploy.sh            # último release: construye la imagen, pide la contraseña la 1.ª vez y levanta
+```
+
+El contenedor corre **solo la web**; el servidor tmux y las sesiones de claude corren en el **host**
+(servicio de usuario `hermes-tmux`, socket `~/.local/state/hermesweb/tmux.sock`). Así claude sigue
+usando tus proyectos, herramientas y `~/.claude`, y las sesiones sobreviven a reinicios o
+actualizaciones del contenedor. El contenedor usa tu uid y ve tu `$HOME` en la misma ruta
+(solo lectura, salvo las carpetas de HermesWeb).
+
+- Configuración en `~/.config/hermesweb/deploy.env` (`HERMES_BIND`, `HERMES_PORT`, `HERMES_HOST_LABEL`).
+- Para que el tmux del host arranque al prender la máquina sin iniciar sesión: `loginctl enable-linger $USER`.
+- Estado: `scripts/deploy.sh --status` · logs: `docker logs -f hermesweb` · volver atrás: `scripts/deploy.sh v0.1.0`.
+- Cambiar la contraseña: `docker exec -it hermesweb node set-password.js`.
+
+### Sin Docker
+
 ```bash
 npm install
 npm run set-password   # la primera vez (y para cambiarla)
@@ -34,7 +53,7 @@ hcw a [nombre]         # engancharse a una existente (sin nombre: menú)
   porque Claude usa `Ctrl+B`).
 - Al salir de Claude (`/exit`) la sesión termina y desaparece del panel.
 
-Las sesiones usan un servidor tmux propio (`-L hermes`); no se mezclan con tu tmux normal.
+Las sesiones usan un servidor tmux propio (socket `~/.local/state/hermesweb/tmux.sock`); no se mezclan con tu tmux normal.
 
 ### Sesiones guardadas (pestaña «Guardadas» o `Alt+G`)
 Catálogo de sesiones de Claude con nombre, título, carpeta, grupo, **reseña** e **historia**
@@ -118,10 +137,24 @@ Hay notificaciones del navegador cuando una sesión termina de trabajar o pide p
 | `HOST` | `127.0.0.1` | Usa la IP de Tailscale/VPN para acceder desde otros equipos. No lo expongas a internet. |
 | `HERMES_SESSION_DAYS` | `30` | Duración de la sesión web |
 | `HERMES_CONFIG_DIR` | `~/.config/hermesweb` | Dónde se guarda `auth.json` |
-| `HERMES_TMUX_SOCKET` | `hermes` | Nombre del socket tmux |
+| `HERMES_TMUX_SOCKET` | `~/.local/state/hermesweb/tmux.sock` | Ruta del socket tmux (compartido entre host y contenedor) |
 | `HERMES_HOST_LABEL` | hostname | Nombre de la máquina que muestra el panel |
 | `HERMES_DATA_DIR` | `~/.local/share/hermesweb` | Base de datos de sesiones guardadas |
 | `HERMES_UPLOAD_DIR` | `~/.cache/hermesweb/uploads` | Dónde se guardan las imágenes subidas |
+
+## Releases y deploy
+
+```bash
+scripts/release.sh [patch|minor|major] -m "mensaje del commit"
+```
+
+Hace, en orden: commit de los cambios pendientes → sube la versión (`package.json`) y crea el tag
+`vX.Y.Z` → push → release en GitHub con notas generadas de los commits → `scripts/deploy.sh vX.Y.Z`
+en esta máquina. Muestra los commits incluidos y pide confirmación (`-y` para no preguntar,
+`--no-deploy` para solo publicar).
+
+En otra máquina (p. ej. el servidor HP): `git pull && scripts/deploy.sh`. GitHub Actions (`ci.yml`)
+verifica en cada push que la imagen construye.
 
 ## Seguridad
 Esta página equivale a acceso a una shell con tu usuario. Por eso:
