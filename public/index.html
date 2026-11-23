@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HermesWeb</title>
+  <link rel="stylesheet" href="/vendor/xterm/css/xterm.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <aside id="sidebar">
+    <header>
+      <div><h1>Hermes<span>Web</span></h1><div id="host"></div></div>
+      <div class="head-actions">
+        <button id="btn-new" title="Nueva sesión (Alt+N)">+ Nueva</button>
+        <button id="btn-collapse" class="icon" title="Contraer panel (Alt+S)">«</button>
+      </div>
+    </header>
+    <nav id="views" role="tablist">
+      <button data-view="terms" class="on" title="Terminales abiertas (Alt+G alterna)">Terminales <span class="count" id="n-live"></span></button>
+      <button data-view="saved" title="Sesiones guardadas (Alt+G alterna)">Guardadas <span class="count" id="n-saved"></span></button>
+    </nav>
+    <ul id="sessions"></ul>
+    <footer id="hint">
+      <button id="btn-keys" class="keys-btn" title="Atajos de teclado (Alt+H)">⌨ Atajos <kbd>Alt+H</kbd></button>
+      <button id="btn-logout" title="Cerrar sesión de HermesWeb (las sesiones de Claude siguen corriendo)">Salir</button>
+    </footer>
+  </aside>
+
+  <main>
+    <div id="terms-view">
+    <div id="topbar">
+      <div id="current">
+        <button id="btn-expand" class="icon" title="Mostrar panel de sesiones (Alt+S)">☰</button>
+        <strong id="cur-name">—</strong>
+        <span id="cur-cwd"></span>
+      </div>
+      <div id="actions">
+        <span id="conn" class="conn"></span>
+        <div id="layouts" role="group" aria-label="Distribución">
+          <button data-layout="single"><svg viewBox="0 0 16 12"><rect x=".5" y=".5" width="15" height="11" rx="1.5"/></svg></button>
+          <button data-layout="rows2"><svg viewBox="0 0 16 12"><rect x=".5" y=".5" width="15" height="11" rx="1.5"/><path d="M.5 6h15"/></svg></button>
+          <button data-layout="cols2"><svg viewBox="0 0 16 12"><rect x=".5" y=".5" width="15" height="11" rx="1.5"/><path d="M8 .5v11"/></svg></button>
+          <button data-layout="cols3"><svg viewBox="0 0 16 12"><rect x=".5" y=".5" width="15" height="11" rx="1.5"/><path d="M5.5 .5v11M10.5 .5v11"/></svg></button>
+          <button data-layout="grid4"><svg viewBox="0 0 16 12"><rect x=".5" y=".5" width="15" height="11" rx="1.5"/><path d="M8 .5v11M.5 6h15"/></svg></button>
+          <button id="btn-zoom" title="Maximizar / restaurar el panel enfocado (Alt+Z o doble clic en su barra)"><svg viewBox="0 0 16 12"><path d="M1 4.5V1h3.5M15 4.5V1h-3.5M1 7.5V11h3.5M15 7.5V11h-3.5"/></svg></button>
+        </div>
+        <button id="btn-upload" title="Adjuntar imágenes a la sesión (también puedes pegarlas con Ctrl+V o arrastrarlas)">🖼 Imágenes</button>
+        <input type="file" id="file-input" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+        <button id="btn-save-live" title="Guardar esta sesión en el catálogo">★ Guardar</button>
+        <button id="btn-copy"title="Copiar comando para engancharse desde una terminal">hcw a</button>
+        <button id="btn-rename">Renombrar</button>
+        <button id="btn-kill" class="danger">Cerrar sesión</button>
+      </div>
+    </div>
+    <div id="terminals">
+      <div id="grid"></div>
+      <div id="pool" hidden></div>
+      <div id="empty">
+        <p>No hay sesión seleccionada.</p>
+        <button id="btn-new-2">+ Nueva sesión</button>
+      </div>
+    </div>
+    </div>
+
+    <section id="saved-view" hidden>
+      <div class="sv-list">
+        <header class="sv-head">
+          <button id="btn-expand-2" class="icon sidebar-toggle" title="Mostrar panel de sesiones (Alt+S)">☰</button>
+          <h2>Sesiones guardadas</h2>
+          <span class="grow"></span>
+          <button id="btn-discover" title="Conversaciones de Claude en esta máquina que todavía no guardaste">Descubrir</button>
+          <button id="btn-saved-new" class="primary" title="Guardar una sesión nueva (Alt+N en esta vista)">+ Nueva</button>
+        </header>
+        <div class="sv-toolbar">
+          <input id="sv-q" type="search" placeholder="Buscar por nombre, título, carpeta, reseña o historia…  ( / )" autocomplete="off">
+          <nav class="sv-tabs" id="sv-status">
+            <button data-status="active" class="on">Activas <span class="count"></span></button>
+            <button data-status="archived">Archivadas <span class="count"></span></button>
+            <button data-status="all">Todas</button>
+          </nav>
+          <select id="sv-sort" title="Orden">
+            <option value="group">Por grupo</option>
+            <option value="activity">Por actividad</option>
+            <option value="name">Por nombre</option>
+          </select>
+        </div>
+        <div id="sv-items" class="sv-items"></div>
+      </div>
+      <aside id="sv-detail" class="sv-detail" hidden></aside>
+    </section>
+  </main>
+
+  <dialog id="dlg-saved" class="wide">
+    <form id="form-saved" method="dialog">
+      <h2 id="fs-title">Nueva sesión guardada</h2>
+      <div class="row2">
+        <label>Nombre (alias) <input name="name" required pattern="[A-Za-z0-9._\-]{1,60}" placeholder="mi_proyecto" autocomplete="off">
+          <small>Sin espacios. Sirve para <code>hcw o nombre</code>.</small></label>
+        <label>Título <input name="title" placeholder="De qué trata la sesión" autocomplete="off"></label>
+      </div>
+      <label>Directorio de trabajo <input name="cwd" list="fs-dirs" placeholder="~/projects/…" autocomplete="off">
+        <small id="fs-cwd-hint"></small></label>
+      <datalist id="fs-dirs"></datalist>
+      <div class="row2">
+        <label>Grupo
+          <select name="group_id"></select>
+        </label>
+        <label>…o grupo nuevo <input name="new_group" placeholder="Nombre del grupo nuevo" autocomplete="off"></label>
+      </div>
+      <fieldset class="kind">
+        <label class="radio"><input type="radio" name="kind" value="conv" checked>
+          <span><b>Conversación</b> — tiene su propio ID: la primera vez se crea, después se retoma.</span></label>
+        <label class="radio"><input type="radio" name="kind" value="launcher">
+          <span><b>Lanzador</b> — cada vez abre una conversación nueva (con el prompt inicial).</span></label>
+      </fieldset>
+      <label id="fs-uuid-field">ID de la conversación (UUID)
+        <div class="input-group">
+          <input name="session_uuid" class="mono" spellcheck="false" autocomplete="off">
+          <button type="button" id="fs-regen" title="Generar otro">↻</button>
+          <button type="button" id="fs-copy-uuid" title="Copiar">⧉</button>
+        </div>
+        <small id="fs-uuid-hint">Generado aquí. Si ya tienes una conversación, pega su ID.</small></label>
+      <label>Prompt inicial <textarea name="start_prompt" rows="2" placeholder="Opcional: se envía al crear la conversación (o en cada apertura si es lanzador)"></textarea></label>
+      <label>Argumentos extra de claude <input name="claude_args" class="mono" placeholder="--model opus" autocomplete="off"></label>
+      <div class="cmd-preview"><span>Se abrirá con</span><code id="fs-preview"></code></div>
+      <label class="check" id="fs-open-wrap"><input type="checkbox" name="open" checked> Abrirla ahora en una terminal</label>
+      <p class="error" id="fs-error"></p>
+      <menu>
+        <button value="cancel" formnovalidate>Cancelar</button>
+        <button value="ok" class="primary">Guardar</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-keys" class="wide keys">
+    <div class="dlg-head">
+      <h2>Atajos de teclado</h2>
+      <button class="icon" id="keys-close" title="Cerrar (Esc)">×</button>
+    </div>
+    <div class="keys-grid">
+<section><h3>General</h3><table><tr><td><kbd>Alt</kbd> + <kbd>H</kbd> o <kbd>?</kbd></td><td>Esta ayuda</td></tr><tr><td><kbd>Alt</kbd> + <kbd>G</kbd></td><td>Alternar entre <b>Terminales</b> y <b>Guardadas</b></td></tr><tr><td><kbd>Alt</kbd> + <kbd>S</kbd></td><td>Contraer / mostrar la barra lateral</td></tr><tr><td><kbd>Alt</kbd> + <kbd>N</kbd></td><td>Nueva sesión (en Guardadas: nueva sesión guardada)</td></tr><tr><td><kbd>Alt</kbd> + <kbd>1…9</kbd></td><td>Mostrar esa sesión de la barra lateral en el panel enfocado</td></tr><tr><td><kbd>Esc</kbd></td><td>Cerrar ventanas como esta</td></tr></table></section>
+<section><h3>Paneles</h3><table><tr><td><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>1</kbd> … <kbd>5</kbd></td><td>Distribución: una · dos apiladas · dos lado a lado · tres columnas · 2×2</td></tr><tr><td><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>←↑→↓</kbd></td><td>Mover el foco al panel de al lado</td></tr><tr><td><kbd>Alt</kbd> + <kbd>Z</kbd> o doble clic en la barra del panel</td><td>Maximizar / restaurar el panel enfocado</td></tr><tr><td>Clic en un panel</td><td>Enfocarlo (sus acciones: imágenes, guardar, renombrar, cerrar)</td></tr><tr><td>× en la barra del panel</td><td>Vaciar el panel (la sesión sigue corriendo)</td></tr></table></section>
+<section><h3>Dentro de la terminal</h3><table><tr><td>Rueda del mouse</td><td>Scroll por el historial (modo copia de tmux); <kbd>q</kbd> para volver</td></tr><tr><td><kbd>Shift</kbd> + arrastrar</td><td>Seleccionar texto</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd></td><td>Copiar la selección</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>V</kbd></td><td>Pegar texto, o adjuntar una imagen del portapapeles (p. ej. tras <kbd>Win</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd>)</td></tr><tr><td>Arrastrar imágenes</td><td>Adjuntarlas a la sesión del panel donde se sueltan</td></tr></table></section>
+<section><h3>Sesiones guardadas</h3><table><tr><td><kbd>/</kbd></td><td>Buscar</td></tr><tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Moverse por la lista</td></tr><tr><td><kbd>Enter</kbd></td><td>Ver la ficha</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>Enter</kbd> o doble clic</td><td>Abrir en una terminal</td></tr><tr><td><kbd>Esc</kbd></td><td>Cerrar la ficha</td></tr></table></section>
+<section><h3>Claude Code (útiles en tablet)</h3><table><tr><td><kbd>Esc</kbd></td><td>Interrumpir a Claude</td></tr><tr><td><kbd>Esc</kbd> <kbd>Esc</kbd></td><td>Volver a un mensaje anterior</td></tr><tr><td><kbd>Shift</kbd> + <kbd>Tab</kbd></td><td>Cambiar de modo (auto, plan, aceptar ediciones)</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>C</kbd></td><td>Cancelar la entrada / salir</td></tr><tr><td><kbd>\</kbd> + <kbd>Enter</kbd></td><td>Nueva línea en el mensaje</td></tr><tr><td><kbd>↑</kbd></td><td>Mensajes anteriores</td></tr></table></section>
+<section><h3>Desde una terminal (hcw)</h3><table><tr><td><code>hcw</code> · <code>hcw -c</code></td><td>Abrir Claude dentro de HermesWeb (visible en la web)</td></tr><tr><td><code>hcw a [nombre]</code></td><td>Engancharse a una sesión abierta</td></tr><tr><td><code>hcw o &lt;nombre&gt;</code></td><td>Abrir una sesión guardada</td></tr><tr><td><kbd>Ctrl</kbd> + <kbd>]</kbd> luego <kbd>d</kbd></td><td>Soltar la terminal sin cerrar la sesión</td></tr></table></section>
+    </div>
+  </dialog>
+
+  <dialog id="dlg-discover" class="wide">
+    <div class="dlg-head">
+      <h2>Descubrir conversaciones</h2>
+      <button class="icon" id="dc-close" title="Cerrar">×</button>
+    </div>
+    <p class="muted small">Conversaciones de Claude Code en esta máquina (<code>~/.claude/projects</code>) que todavía no guardaste.</p>
+    <input id="dc-q" type="search" placeholder="Filtrar por título, carpeta o prompt…" autocomplete="off">
+    <div id="dc-items" class="dc-items"></div>
+  </dialog>
+
+  <dialog id="dlg-new">
+    <form method="dialog" id="form-new">
+      <h2>Nueva sesión</h2>
+      <label>Nombre <input name="name" required pattern="[A-Za-z0-9_\-]{1,40}" placeholder="api-backend" autocomplete="off"></label>
+      <label>Directorio <input name="cwd" list="recent-dirs" placeholder="~/projects/..." autocomplete="off"></label>
+      <datalist id="recent-dirs"></datalist>
+      <label>Comando <input name="command" value="claude" autocomplete="off"></label>
+      <div class="presets">
+        <button type="button" data-cmd="claude">claude</button>
+        <button type="button" data-cmd="claude --continue">--continue</button>
+        <button type="button" data-cmd="claude --resume">--resume</button>
+        <button type="button" data-cmd="">solo shell</button>
+      </div>
+      <p class="error" id="new-error"></p>
+      <menu>
+        <button value="cancel" formnovalidate>Cancelar</button>
+        <button value="ok" class="primary">Crear</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

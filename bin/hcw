@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# hcw — abre Claude Code en tu terminal, dentro del tmux de HermesWeb,
+# para que la misma sesión también se vea y controle desde la web.
+#
+#   hcw [args de claude]        nueva sesión en el directorio actual (hcw -c, hcw --resume ...)
+#   hcw -n NOMBRE [args]        nueva sesión con nombre explícito
+#   hcw a [NOMBRE]              engancharse a una sesión existente (sin nombre: elige)
+#   hcw ls                      listar sesiones abiertas (tmux)
+#
+# Sesiones guardadas (catálogo de HermesWeb):
+#   hcw saved [filtro] [-a]     listar guardadas         hcw show <ref>   reseña + historia
+#   hcw o <ref>                 abrir una guardada (--resume o --session-id) y engancharse
+#   hcw register [--name N] [--title T] [--group G]     guardar la sesión de Claude actual
+#   hcw summary [texto|-f archivo|stdin]                 reseña de la sesión actual
+#   hcw log -t "Título" [-k tipo] [texto|-f|stdin]       entrada de historia de la sesión actual
+#   hcw help
+set -euo pipefail
+
+SOCKET="${HERMES_TMUX_SOCKET:-hermes}"
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+CONF="$(dirname "$SELF")/../tmux.conf"
+T=(tmux -L "$SOCKET" -f "$CONF")
+
+usage() { sed -n '2,16p' "$SELF" | sed 's/^# \{0,1\}//'; }
+
+list() {
+  "${T[@]}" list-sessions -F '#{session_name}|#{pane_current_command}|#{pane_current_path}|#{session_attached}' 2>/dev/null |
+    awk -F'|' -v home="$HOME" '{ p=$3; sub("^" home, "~", p);
+      printf "  %-22s %-8s %-40s %s\n", $1, $2, p, ($4>0 ? "("$4" conectado)" : "") }'
+}
+
+attach() {
+  if [[ -n "${TMUX:-}" ]]; then
+    "${T[@]}" switch-client -t "=$1" 2>/dev/null || { echo "Ya estás dentro de tmux; usa: tmux -L $SOCKET attach -t $1" >&2; exit 1; }
+  else
+    exec "${T[@]}" attach-session -t "=$1"
+  fi
+}
+
+CLI="$(dirname "$SELF")/hermes-cli.js"
+
+case "${1:-}" in
+  help|-h|--help) usage; exit 0 ;;
+  saved|show|register|summary|log)
+    cmd="$1"; shift; exec node "$CLI" "$cmd" "$@" ;;
+  o|open)
+    [[ -n "${2:-}" ]] || { echo "uso: hcw o <nombre-guardado>" >&2; exit 1; }
+    name="$(node "$CLI" open "$2")" || exit 1
+    attach "$name" ;;
+  ls|list)
+    out="$(list)"; [[ -n "$out" ]] && echo "$out" || echo "No hay sesiones."; exit 0 ;;
+  a|attach)
+    name="${2:-}"
+    if [[ -z "$name" ]]; then
+      mapfile -t names < <("${T[@]}" list-sessions -F '#{session_name}' 2>/dev/null || true)
+      (( ${#names[@]} )) || { echo "No hay sesiones."; exit 1; }
+      list | nl -w2 -s') '
+      read -rp "Número: " n
+      name="${names[$((n-1))]:-}"
+      [[ -n "$name" ]] || { echo "Opción inválida"; exit 1; }
+    fi
+    attach "$name" ;;
+esac
+
+# --- nueva sesión ---
+name=""
+if [[ "${1:-}" == "-n" ]]; then
+  name="${2:?Falta el nombre después de -n}"; shift 2
+fi
+
+if [[ -n "${TMUX:-}" && "${TMUX%%,*}" == *"/$SOCKET" ]]; then
+  # ya estamos dentro de una sesión de HermesWeb: simplemente correr claude
+  exec claude "$@"
+fi
+
+sanitize() { local s="${1//[^A-Za-z0-9_-]/-}"; echo "${s:0:40}"; }
+if [[ -z "$name" ]]; then
+  base="$(sanitize "$(basename "$PWD")")"; [[ -n "$base" ]] || base="claude"
+  name="$base"; i=2
+  while "${T[@]}" has-session -t "=$name" 2>/dev/null; do name="${base:0:36}-$i"; i=$((i+1)); done
+else
+  name="$(sanitize "$name")"
+  "${T[@]}" has-session -t "=$name" 2>/dev/null && { echo "Ya existe la sesión '$name' (hcw a $name para engancharte)" >&2; exit 1; }
+fi
+
+# Variables de entorno relevantes de esta terminal → la sesión
+envargs=(-e "PATH=$PATH")
+while IFS='=' read -r k _; do
+  [[ "$k" =~ ^(CLAUDE_CODE_SESSION_ID|CLAUDECODE)$ ]] && continue   # son de la sesión que llama, no de la nueva
+  [[ "$k" =~ ^(ANTHROPIC_|CLAUDE_|AWS_|GOOGLE_|VIRTUAL_ENV|PYENV_|NVM_|LANG$|LC_) ]] && envargs+=(-e "$k=${!k}")
+done < <(env)
+
+# ID de la conversación: si es nueva se asigna desde ya (así se puede guardar en HermesWeb)
+uuid=""; prev=""; fresh=1
+for a in "$@"; do
+  case "$a" in
+    -c|--continue|-p|--print|--session-id|--session-id=*) fresh=0 ;;
+    -r|--resume) fresh=0 ;;
+    --resume=*) fresh=0; uuid="${a#--resume=}" ;;
+  esac
+  [[ "$prev" == "-r" || "$prev" == "--resume" ]] && [[ "$a" =~ ^[0-9a-fA-F-]{36}$ ]] && uuid="$a"
+  prev="$a"
+done
+extra=()
+if (( fresh )); then
+  uuid="$(cat /proc/sys/kernel/random/uuid)"
+  extra=(--session-id "$uuid")
+fi
+
+"${T[@]}" new-session -d -s "$name" -c "$PWD" "${envargs[@]}" -- claude "${extra[@]}" "$@"
+[[ -n "$uuid" ]] && "${T[@]}" set-option -t "=$name:" @hermes_uuid "${uuid,,}"
+"${T[@]}" source-file "$CONF" 2>/dev/null || true
+echo "Sesión '$name' (también visible en HermesWeb)"
+attach "$name"
