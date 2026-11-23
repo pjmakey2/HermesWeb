@@ -14,11 +14,19 @@ services:
     init: false                   # tini ya es el entrypoint
     environment:
       HOME: ${HOME}
+      TZ: ${HERMES_TZ:-UTC}           # zona horaria del host (la pone deploy.sh): agrupa el uso por día local
       SHELL: ${SHELL:-/bin/bash}  # shell que el tmux del host lanza para las sesiones nuevas
       HOST: ${HERMES_BIND:-127.0.0.1}
       PORT: ${HERMES_PORT:-7681}
       HERMES_HOST_LABEL: ${HERMES_HOST_LABEL:-}
       HERMES_SESSION_DAYS: ${HERMES_SESSION_DAYS:-30}
+      HERMES_PUBLIC_URL: ${HERMES_PUBLIC_URL:-}         # URL con la que entras (link de los avisos)
+      HERMES_PEERS: ${HERMES_PEERS:-}                   # otras máquinas: "hp=https://hp.x.ts.net,..."
+      HERMES_NTFY_URL: ${HERMES_NTFY_URL:-}             # avisos al celular (ntfy)
+      HERMES_NTFY_TOKEN: ${HERMES_NTFY_TOKEN:-}
+      HERMES_TELEGRAM_TOKEN: ${HERMES_TELEGRAM_TOKEN:-} # …o por Telegram
+      HERMES_TELEGRAM_CHAT: ${HERMES_TELEGRAM_CHAT:-}
+      HERMES_BACKUP_KEEP: ${HERMES_BACKUP_KEEP:-14}
     volumes:
       - ${HOME}:${HOME}:ro                                            # proyectos, ~/.claude (solo lectura)
       - ${HOME}/.config/hermesweb:${HOME}/.config/hermesweb           # contraseña, token, tmux.conf

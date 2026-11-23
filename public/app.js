@@ -2,6 +2,7 @@ import { Terminal } from '/vendor/xterm/lib/xterm.mjs';
 import { FitAddon } from '/vendor/addon-fit/lib/addon-fit.mjs';
 import { WebLinksAddon } from '/vendor/addon-web-links/lib/addon-web-links.mjs';
 import * as saved from '/saved.js';
+import * as tools from '/tools.js';
 
 const $ = s => document.querySelector(s);
 const terms = new Map();     // name -> { term, fit, el, ws, retry, closedByUs }
@@ -62,7 +63,9 @@ function ago(ms) {
 let firstLoad = true;
 async function refresh() {
   try {
-    const r = await fetch('/api/sessions');
+    // le dice al servidor qué sesiones se están mirando (para no mandar avisos al celular)
+    const seen = document.hidden ? '' : [...visibleNames()].join(',');
+    const r = await fetch('/api/sessions' + (seen ? '?seen=' + encodeURIComponent(seen) : ''));
     if (r.status === 401) { leaving = true; location.replace('/login' + location.hash); return; }
     const data = await r.json();
     home = data.home;
@@ -113,7 +116,7 @@ function render() {
     li.querySelector('.name').textContent = s.name;
     const what = s.saved ? (s.saved.title || s.saved.name)
       : title && !/^(claude( code)?|zsh|bash)$/i.test(title) ? title : prettyPath(s.cwd);
-    li.querySelector('.sub').textContent = `${STATE_LABEL[st] || s.command} · ${ago(s.activity)} · ${what}`;
+    li.querySelector('.sub').textContent = `${STATE_LABEL[st] || s.command} · ${ago(s.activity)}${s.cost ? ` · $${s.cost.toFixed(2)}` : ''} · ${what}`;
     if (s.saved) li.querySelector('.name').insertAdjacentHTML('beforeend', ' <span class="saved-mark" title="Guardada en el catálogo">★</span>');
     li.onclick = () => { if (view !== 'terms') setView('terms'); select(s.name); };
     ul.appendChild(li);
@@ -134,10 +137,11 @@ function render() {
   const s = sessions.find(x => x.name === current);
   $('#cur-name').textContent = s ? s.name : '—';
   $('#cur-cwd').textContent = s ? prettyPath(s.cwd) : '';
-  for (const b of ['#btn-upload', '#btn-copy', '#btn-rename', '#btn-kill']) $(b).disabled = !s;
+  for (const b of ['#btn-upload', '#btn-diff', '#btn-copy', '#btn-rename', '#btn-kill']) $(b).disabled = !s;
+  tools.updateQuickbar();
   const sv = $('#btn-save-live');
   sv.disabled = !s || (!s.uuid && !s.saved);
-  sv.textContent = s?.saved ? '★ Ficha' : '★ Guardar';
+  sv.innerHTML = `★<span class="lbl"> ${s?.saved ? 'Ficha' : 'Guardar'}</span>`;
   sv.title = s?.saved ? `Ver la ficha de «${s.saved.name}»`
     : s?.uuid ? 'Guardar esta sesión en el catálogo (con su ID de conversación)'
     : 'Solo se pueden guardar conversaciones nuevas abiertas desde HermesWeb o hcw (su ID se conoce)';
@@ -231,6 +235,7 @@ function placeTerms() {
   for (const t of terms.values()) if (!shown.has(t.name) && t.el.parentNode !== pool) pool.appendChild(t.el);
   current = panes[focused] ?? null;
   $('#grid').className = `l-${layout}${zoomed ? ' zoomed' : ''}`;
+  applySplit();
   saveLayout();
   requestAnimationFrame(() => paneEls.forEach((_, i) => fitPane(i)));
   render();
@@ -314,6 +319,83 @@ function moveFocus(dir) {
   });
   if (best >= 0) focusPane(best);
 }
+
+// ---------- paneles redimensionables ----------
+// Proporciones por distribución: r = alto de la fila de arriba, c = ancho de la columna izquierda
+const SPLITS = { rows2: ['r'], cols2: ['c'], tri: ['r', 'c'], grid4: ['r', 'c'] };
+const split = JSON.parse(localStorage.getItem('hermes.split') || '{}');
+const ratio = (k) => split[layout]?.[k] ?? 0.5;
+
+function applySplit() {
+  const g = $('#grid');
+  const axes = (!zoomed && SPLITS[layout]) || [];
+  g.style.gridTemplateRows = axes.includes('r') ? `${ratio('r')}fr ${1 - ratio('r')}fr` : '';
+  g.style.gridTemplateColumns = axes.includes('c') ? `${ratio('c')}fr ${1 - ratio('c')}fr` : '';
+  requestAnimationFrame(placeSplitters);
+}
+
+function placeSplitters() {
+  const box = $('#splitters');
+  const axes = (!zoomed && view === 'terms' && SPLITS[layout]) || [];
+  // reutilizar los divisores existentes (recrearlos cortaría un arrastre en curso)
+  if (box.dataset.key !== `${layout}:${axes.join('')}`) {
+    box.dataset.key = `${layout}:${axes.join('')}`;
+    box.innerHTML = '';
+    for (const k of axes) {
+      const el = document.createElement('div');
+      el.className = 'splitter ' + (k === 'c' ? 'v' : 'h');
+      el.dataset.k = k;
+      el.title = 'Arrastra para cambiar el tamaño · doble clic: mitad y mitad';
+      el.addEventListener('pointerdown', e => startDrag(e, k, el));
+      el.addEventListener('dblclick', () => { (split[layout] ||= {})[k] = 0.5; saveSplit(); applySplit(); });
+      box.appendChild(el);
+    }
+  }
+  if (!axes.length || !paneEls[0]) return;
+  const base = $('#terminals').getBoundingClientRect();
+  const a = paneEls[0].root.getBoundingClientRect();
+  const g = $('#grid').getBoundingClientRect();
+  for (const el of box.children) {
+    if (el.dataset.k === 'c') {   // vertical: entre las columnas (en "tri" solo en la fila de arriba)
+      Object.assign(el.style, { left: `${a.right - base.left - 3}px`, top: `${a.top - base.top}px`,
+        height: `${layout === 'tri' ? a.height : g.height}px` });
+    } else {                      // horizontal: entre las filas
+      Object.assign(el.style, { top: `${a.bottom - base.top - 3}px`, left: `${g.left - base.left}px`, width: `${g.width}px` });
+    }
+  }
+}
+
+function startDrag(e, k, el) {
+  e.preventDefault();
+  try { el.setPointerCapture(e.pointerId); } catch {}
+  el.classList.add('dragging');
+  document.body.classList.add(k === 'c' ? 'resizing-v' : 'resizing-h');
+  const g = $('#grid').getBoundingClientRect();
+  const move = ev => {
+    const v = k === 'c' ? (ev.clientX - g.left) / g.width : (ev.clientY - g.top) / g.height;
+    (split[layout] ||= {})[k] = Math.round(Math.max(0.15, Math.min(0.85, v)) * 1000) / 1000;
+    applySplit();
+  };
+  let done = false;
+  const up = () => {
+    if (done) return;
+    done = true;
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+    el.removeEventListener('lostpointercapture', up);
+    document.body.classList.remove('resizing-v', 'resizing-h');
+    saveSplit();
+    applySplit();
+  };
+  // en window (no solo en el divisor): el divisor se reubica mientras se arrastra
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
+  el.addEventListener('lostpointercapture', up);
+}
+const saveSplit = () => localStorage.setItem('hermes.split', JSON.stringify(split));
+new ResizeObserver(() => requestAnimationFrame(placeSplitters)).observe($('#terminals'));
 
 // ---------- terminales ----------
 function makeTerm(name, parent) {
@@ -415,7 +497,14 @@ function openKeys() { const d = $('#dlg-keys'); if (!d.open) d.showModal(); }
 $('#btn-keys').onclick = openKeys;
 $('#keys-close').onclick = () => $('#dlg-keys').close();
 
+// Se llama desde la terminal (xterm) y otra vez cuando el mismo evento sube al document:
+// la marca evita ejecutar dos veces un atajo que alterna (zoom, barra lateral, pantalla completa…).
 function globalShortcut(e) {
+  if (e.__hermes !== undefined) return e.__hermes;
+  return (e.__hermes = handleShortcut(e));
+}
+
+function handleShortcut(e) {
   if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyH') { e.preventDefault(); openKeys(); return true; }
   // "?" abre la ayuda si no se está escribiendo (en una terminal "?" va a la terminal)
   if (e.key === '?' && !e.altKey && !e.ctrlKey && !e.metaKey && !e.target.closest?.('.xterm')
@@ -431,6 +520,9 @@ function globalShortcut(e) {
     if (dir) { e.preventDefault(); moveFocus(dir); return true; }
     const m = /^Digit([1-5])$/.exec(e.code);
     if (m) { e.preventDefault(); setLayout(LAYOUT_KEYS[m[1] - 1]); return true; }
+    if (e.code === 'KeyD') { e.preventDefault(); tools.openDiff(); return true; }
+    if (e.code === 'KeyF') { e.preventDefault(); tools.toggleFullscreen(); return true; }
+    if (e.code === 'KeyK') { e.preventDefault(); tools.toggleQuickbar(); return true; }
     return false;
   }
   if (e.code === 'KeyN') { e.preventDefault(); openNew(); return true; }
@@ -455,7 +547,7 @@ function setView(v) {
     savedTimer = setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]')) saved.load(); }, 5000);
   } else {
     history.replaceState(null, '', current ? '#' + encodeURIComponent(current) : location.pathname);
-    requestAnimationFrame(() => { paneEls.forEach((_, i) => fitPane(i)); terms.get(current)?.term.focus(); });
+    requestAnimationFrame(() => { paneEls.forEach((_, i) => fitPane(i)); placeSplitters(); terms.get(current)?.term.focus(); });
   }
 }
 document.querySelectorAll('#views button').forEach(b => b.onclick = () => setView(b.dataset.view));
@@ -642,6 +734,18 @@ $('#grid').addEventListener('drop', e => {
 
 // Evitar cerrar la pestaña por accidente (Ctrl+W) con sesiones abiertas
 window.addEventListener('beforeunload', e => { if (!leaving && terms.size) e.preventDefault(); });
+
+tools.init({
+  current: () => current,
+  currentSession: () => sessions.find(s => s.name === current),
+  host: () => host,
+  pretty: prettyPath,
+  toast: (m, err, ms) => toast(m, err, ms),
+  // envía bytes a la sesión como si se tipearan en su terminal
+  send: (name, data) => { const t = terms.get(name); if (t?.ws?.readyState === 1) t.ws.send(enc.encode(data)); },
+  focusTerm: () => terms.get(current)?.term.focus(),
+  refit: () => requestAnimationFrame(() => { paneEls.forEach((_, i) => fitPane(i)); placeSplitters(); }),
+});
 
 // ---------- arranque ----------
 buildGrid();

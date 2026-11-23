@@ -4,3 +4,5 @@ node_modules/
 *.db
 *.db-*
 uploads/
+test-results/
+playwright-report/

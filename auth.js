@@ -10,7 +10,9 @@ const SCRYPT = { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 
 export const CONFIG_DIR = process.env.HERMES_CONFIG_DIR || path.join(homedir(), '.config', 'hermesweb');
 export const AUTH_FILE = path.join(CONFIG_DIR, 'auth.json');
-export const COOKIE = 'hermes_session';
+// El nombre incluye el puerto: los navegadores no separan cookies por puerto, y dos instancias en
+// el mismo host (p. ej. una de prueba) se pisarían la sesión.
+export const COOKIE = `hermes_session_${process.env.PORT || 7681}`;
 export const SESSION_DAYS = Number(process.env.HERMES_SESSION_DAYS || 30);
 
 export function loadAuth() {

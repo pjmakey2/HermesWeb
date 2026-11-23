@@ -4,6 +4,9 @@
 #   scripts/deploy.sh               último release
 #   scripts/deploy.sh v0.2.0        un release concreto (también sirve para volver atrás)
 #   scripts/deploy.sh --status      versión desplegada y estado
+#   scripts/deploy.sh --if-newer    solo si hay un release más nuevo que el desplegado (para el timer)
+#   scripts/deploy.sh --install-autodeploy [min]   timer que corre --if-newer cada N minutos (def. 10)
+#   scripts/deploy.sh --remove-autodeploy
 #
 # Construye la imagen exactamente desde el tag (git archive, sin cambios locales), asegura el
 # servidor tmux del host (servicio de usuario hermes-tmux) y levanta el contenedor.
@@ -11,6 +14,7 @@
 #   HERMES_BIND=127.0.0.1   (0.0.0.0 o la IP de Tailscale para acceder desde la tablet)
 #   HERMES_PORT=7681
 #   HERMES_HOST_LABEL=laptop
+#   HERMES_PUBLIC_URL, HERMES_PEERS, HERMES_NTFY_URL, HERMES_TELEGRAM_* (ver README)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
@@ -22,6 +26,7 @@ CFG="$HOME/.config/hermesweb"
 SOCK="$HOME/.local/state/hermesweb/tmux.sock"
 [[ -f "$CFG/deploy.env" ]] && { set -a; source "$CFG/deploy.env"; set +a; }
 export HERMES_PORT="${HERMES_PORT:-7681}" HERMES_UID="$(id -u)" HERMES_GID="$(id -g)"
+export HERMES_TZ="${HERMES_TZ:-$(timedatectl show -p Timezone --value 2>/dev/null || cat /etc/timezone 2>/dev/null || echo UTC)}"
 
 if [[ "${1:-}" == "--status" ]]; then
   docker inspect hermesweb --format 'Contenedor: {{.State.Status}}  imagen {{.Config.Image}}  desde {{.State.StartedAt}}' 2>/dev/null || echo "Contenedor: no existe"
@@ -29,9 +34,54 @@ if [[ "${1:-}" == "--status" ]]; then
   exit 0
 fi
 
+if [[ "${1:-}" == "--install-autodeploy" ]]; then
+  min="${2:-10}"
+  [[ "$min" =~ ^[0-9]+$ ]] || die "minutos inválidos: $min"
+  UNIT_DIR="$HOME/.config/systemd/user"; mkdir -p "$UNIT_DIR"
+  cat > "$UNIT_DIR/hermes-autodeploy.service" <<UNIT
+[Unit]
+Description=HermesWeb: desplegar el último release si hay uno nuevo
+[Service]
+Type=oneshot
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=$ROOT/scripts/deploy.sh --if-newer
+UNIT
+  cat > "$UNIT_DIR/hermes-autodeploy.timer" <<UNIT
+[Unit]
+Description=HermesWeb: buscar releases nuevos cada $min min
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=${min}min
+[Install]
+WantedBy=timers.target
+UNIT
+  systemctl --user daemon-reload
+  systemctl --user enable --now hermes-autodeploy.timer
+  say "auto-deploy activo: cada $min min (logs: journalctl --user -u hermes-autodeploy)"
+  exit 0
+fi
+if [[ "${1:-}" == "--remove-autodeploy" ]]; then
+  systemctl --user disable --now hermes-autodeploy.timer 2>/dev/null || true
+  rm -f "$HOME/.config/systemd/user/hermes-autodeploy."{service,timer}
+  systemctl --user daemon-reload
+  say "auto-deploy desactivado"; exit 0
+fi
+
 # --- versión ---
 git fetch --tags --quiet origin 2>/dev/null || say "sin conexión con origin: uso los tags locales"
 ver="${1:-latest}"
+if [[ "$ver" == "--if-newer" ]]; then
+  # actualizar también scripts y docker-compose.yml (solo si el repo está limpio y en main)
+  if [[ "$(git branch --show-current)" == main && -z "$(git status --porcelain)" ]]; then
+    git merge --ff-only --quiet origin/main 2>/dev/null || true
+  fi
+  ver=latest
+  latest="$(git tag -l 'v*' --sort=-v:refname | head -1)"
+  running="$(docker inspect hermesweb --format '{{.Config.Image}}' 2>/dev/null | sed 's/^hermesweb://')"
+  [[ -n "$latest" && "$latest" != "$running" ]] || exit 0
+  say "release nuevo: ${running:-ninguno} → $latest"
+  exec "$ROOT/scripts/deploy.sh" "$latest"   # con la versión recién actualizada de este script
+fi
 [[ "$ver" == latest ]] && ver="$(git tag -l 'v*' --sort=-v:refname | head -1)"
 [[ -n "$ver" ]] || die "no hay releases todavía (crea uno con scripts/release.sh)"
 git rev-parse -q --verify "refs/tags/$ver" >/dev/null || die "no existe el tag $ver"

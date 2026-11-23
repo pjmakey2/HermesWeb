@@ -101,7 +101,54 @@ dos lado a lado, tres (dos arriba y una abajo a todo el ancho) o grilla 2×2. Ca
 tamaño; el panel enfocado se resalta y es el que reciben las acciones de la barra superior
 (imágenes, renombrar, cerrar). Al elegir una sesión en la barra lateral, va al panel enfocado
 (si ya está visible en otro panel, solo se enfoca). La × de un panel lo vacía sin cerrar la sesión.
-La distribución se recuerda entre visitas.
+La distribución se recuerda entre visitas. Arrastrando el borde entre paneles se cambia su tamaño
+(doble clic en el borde: mitad y mitad); las proporciones también se recuerdan.
+
+### Barra de teclas para Claude (`⌨` o `Alt+Shift+K`)
+Botones para lo que en una tablet cuesta teclear: `Esc` (interrumpir), `⇧Tab` (cambiar de modo),
+flechas, `Enter`, `/compact` y `Ctrl+C`, enviados a la sesión del panel enfocado. Cuando esa sesión
+**pide permiso**, la barra aparece sola (aunque esté oculta) con las respuestas **1 / 2 / 3** resaltadas.
+
+### Cambios (`± Cambios` o `Alt+Shift+D`)
+Muestra qué cambió en el repositorio git del directorio de la sesión: rama, archivos modificados y
+nuevos con sus líneas `+/−`, el diff coloreado por archivo y los últimos commits. Solo lectura.
+
+### Uso y costo (`$ Uso`, abajo a la izquierda)
+Costo y tokens de Claude Code de hoy, 7 y 30 días, un gráfico por día y las sesiones que más
+consumieron. Se lee de los transcripts de `~/.claude/projects` (incremental; la primera vez tarda
+unos segundos). El costo es el que calcula Claude Code (equivalente en precios de API: con
+suscripción no es lo que pagas) y se actualiza de a ratos; los tokens son exactos. Cada sesión
+abierta muestra también su costo en la barra lateral.
+
+### App y pantalla completa (`⚙ Ajustes`)
+- **Instalar como app** (PWA): ventana propia, sin barra del navegador. Requiere HTTPS o localhost.
+- **Pantalla completa** (`⛶` o `Alt+Shift+F`): usa *Keyboard Lock*, así `Ctrl+W`, `Ctrl+T`, `Ctrl+N`…
+  llegan a la terminal en vez de cerrar o abrir pestañas. Para salir: mantener `Esc`.
+
+### Avisos al celular
+Cuando una sesión **termina** de trabajar (tras ≥20 s) o **pide permiso**, y ninguna pestaña de
+HermesWeb la está mostrando hace más de un minuto, el servidor manda un aviso. Configurar en
+`~/.config/hermesweb/deploy.env` y volver a desplegar:
+
+```bash
+HERMES_NTFY_URL=https://ntfy.sh/<un-tópico-largo-y-secreto>   # app ntfy en el celular, suscrita a ese tópico
+# o Telegram:
+HERMES_TELEGRAM_TOKEN=<token del bot>
+HERMES_TELEGRAM_CHAT=<tu chat id>
+HERMES_PUBLIC_URL=https://<máquina>.<tailnet>.ts.net          # para que el aviso abra la sesión
+```
+
+En **⚙ Ajustes → Enviar prueba** se comprueba. El tópico de ntfy.sh es público para quien lo
+conozca: usa un nombre largo y aleatorio (o tu propio servidor ntfy con `HERMES_NTFY_TOKEN`).
+
+### Varias máquinas
+Con `HERMES_PEERS="hp=https://hp.<tailnet>.ts.net,laptop=https://laptop.<tailnet>.ts.net"` aparecen
+enlaces a las otras máquinas bajo el nombre de esta. Cada una sigue siendo independiente.
+
+### Respaldos
+La base de sesiones guardadas se respalda sola una vez al día en `~/.local/share/hermesweb/backups/`
+(se guardan los últimos 14, `HERMES_BACKUP_KEEP`). También desde **⚙ Ajustes → Respaldar ahora**.
+Para restaurar: detener HermesWeb y copiar el respaldo sobre `hermes.db`.
 
 ### Atajos
 En la web: botón **⌨ Atajos** (abajo a la izquierda), `Alt+H`, o `?` fuera de una terminal.
@@ -115,6 +162,9 @@ En la web: botón **⌨ Atajos** (abajo a la izquierda), `Alt+H`, o `?` fuera de
 | `Alt+Shift+1…5` | distribución: una · dos apiladas · dos lado a lado · tres (2 arriba + 1 abajo) · 2×2 |
 | `Alt+Shift+flechas` | mover el foco al panel de al lado |
 | `Alt+Z` (o doble clic en la barra del panel) | maximizar / restaurar el panel enfocado |
+| `Alt+Shift+D` | cambios (git) de la sesión |
+| `Alt+Shift+K` | barra de teclas para Claude |
+| `Alt+Shift+F` | pantalla completa (los atajos del navegador van a la terminal) |
 | Rueda del mouse | scroll por el historial (modo copia de tmux; `q` para salir) |
 | `Shift+arrastrar`, `Ctrl+Shift+C` | seleccionar y copiar texto |
 
@@ -141,6 +191,20 @@ Hay notificaciones del navegador cuando una sesión termina de trabajar o pide p
 | `HERMES_HOST_LABEL` | hostname | Nombre de la máquina que muestra el panel |
 | `HERMES_DATA_DIR` | `~/.local/share/hermesweb` | Base de datos de sesiones guardadas |
 | `HERMES_UPLOAD_DIR` | `~/.cache/hermesweb/uploads` | Dónde se guardan las imágenes subidas |
+| `HERMES_PUBLIC_URL` | — | URL con la que entras (la abren los avisos al celular) |
+| `HERMES_PEERS` | — | Otras máquinas: `nombre=url,nombre=url` |
+| `HERMES_NTFY_URL`, `HERMES_NTFY_TOKEN` | — | Avisos por ntfy |
+| `HERMES_TELEGRAM_TOKEN`, `HERMES_TELEGRAM_CHAT` | — | Avisos por Telegram |
+| `HERMES_BACKUP_KEEP` | `14` | Respaldos diarios que se conservan |
+
+Con Docker, estas variables van en `~/.config/hermesweb/deploy.env` (junto con `HERMES_BIND`,
+`HERMES_PORT`, `HERMES_HOST_LABEL`).
+
+## HTTPS con Tailscale
+Por HTTP desde otra máquina el navegador bloquea notificaciones, portapapeles e instalar la app.
+`scripts/tailscale-serve.sh` publica HermesWeb en `https://<máquina>.<tailnet>.ts.net`, visible solo
+para tus dispositivos de Tailscale (HermesWeb sigue escuchando en `127.0.0.1`). Requiere HTTPS
+habilitado en la consola de Tailscale (DNS → *Enable HTTPS*). `scripts/tailscale-serve.sh off` lo quita.
 
 ## Releases y deploy
 
@@ -148,13 +212,28 @@ Hay notificaciones del navegador cuando una sesión termina de trabajar o pide p
 scripts/release.sh [patch|minor|major] -m "mensaje del commit"
 ```
 
-Hace, en orden: commit de los cambios pendientes → sube la versión (`package.json`) y crea el tag
-`vX.Y.Z` → push → release en GitHub con notas generadas de los commits → `scripts/deploy.sh vX.Y.Z`
-en esta máquina. Muestra los commits incluidos y pide confirmación (`-y` para no preguntar,
-`--no-deploy` para solo publicar).
+Hace, en orden: tests (API + interfaz; si fallan, no publica nada) → commit de los cambios
+pendientes → sube la versión (`package.json`) y crea el tag `vX.Y.Z` → push → release en GitHub con
+notas generadas de los commits → `scripts/deploy.sh vX.Y.Z` en esta máquina → deploy en las otras.
+Muestra los commits incluidos y pide confirmación (`-y` para no preguntar, `--no-deploy` para solo
+publicar, `--skip-tests` para saltar los tests).
 
-En otra máquina (p. ej. el servidor HP): `git pull && scripts/deploy.sh`. GitHub Actions (`ci.yml`)
-verifica en cada push que la imagen construye.
+**Otras máquinas** (p. ej. el servidor HP), dos opciones:
+- Por SSH desde `release.sh`: en `~/.config/hermesweb/deploy.env` de esta máquina,
+  `HERMES_DEPLOY_HOSTS="peter@hp"` (el repo en `~/projects/HermesWeb` de la otra).
+- Que se actualice sola: en esa máquina, `scripts/deploy.sh --install-autodeploy [minutos]` instala
+  un timer que despliega cada release nuevo (`--remove-autodeploy` lo quita).
+
+Ojo: cada deploy recrea el contenedor; la web se reconecta sola y las sesiones de claude no se
+interrumpen (viven en el tmux del host), pero conviene no hacerlo en medio de algo delicado.
+
+### Tests
+```bash
+npm test                         # API (node:test)
+PW_CHANNEL=chrome npm run test:ui    # interfaz en un navegador real (Playwright; sin PW_CHANNEL usa su Chromium)
+scripts/dev-server.sh start      # instancia aislada en http://localhost:7799 para probar a mano
+```
+GitHub Actions (`ci.yml`) corre todo en cada push, además de construir la imagen Docker.
 
 ## Seguridad
 Esta página equivale a acceso a una shell con tu usuario. Por eso:

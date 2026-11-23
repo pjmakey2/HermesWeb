@@ -8,6 +8,11 @@ import { statSync, copyFileSync, mkdirSync } from 'node:fs';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { getDb, findSession } from './lib/db.js';
+import { transcriptPath, info as transcriptInfo } from './lib/transcripts.js';
+import { usageReport, refreshUsage } from './lib/usage.js';
+import { channels as notifyChannels, markSeen, send as notifySend, startWatcher } from './lib/notify.js';
+import { startBackups, backupNow, listBackups, BACKUP_DIR } from './lib/backup.js';
+import { sessionDiff } from './lib/gitdiff.js';
 import { savedRouter } from './lib/saved.js';
 import {
   AUTH_FILE, CONFIG_DIR, loadAuth, checkPassword, makeSessionCookie, clearSessionCookie, validSession,
@@ -69,10 +74,16 @@ function bearerOk(req) {
 
 const isSecure = req => req.secure || req.headers['x-forwarded-proto'] === 'https';
 const authed = req => validSession(getAuth(), req.headers.cookie) || bearerOk(req);
+// Detrás de un proxy local (tailscale serve, caddy…) el Host puede venir reescrito: se acepta
+// X-Forwarded-Host solo si la conexión viene de la propia máquina.
+const fromLoopback = req => /^(::ffff:)?127\.|^::1$/.test(req.socket.remoteAddress || '');
 const sameOrigin = req => {
   const origin = req.headers.origin;
   if (!origin) return true;
-  try { return new URL(origin).host === req.headers.host; } catch { return false; }
+  let o; try { o = new URL(origin).host; } catch { return false; }
+  if (o === req.headers.host) return true;
+  const fwd = fromLoopback(req) && req.headers['x-forwarded-host'];
+  return !!fwd && fwd.split(',')[0].trim() === o;
 };
 
 // ---------- tmux ----------
@@ -164,6 +175,10 @@ app.use((req, res, next) => {
   next();
 });
 
+// PWA: el navegador pide el manifiesto y el service worker sin credenciales
+for (const f of ['manifest.webmanifest', 'sw.js', 'icon.svg', 'icon-192.png', 'icon-512.png', 'icon-maskable.png'])
+  app.get('/' + f, (req, res) => res.sendFile(path.join(__dirname, 'public', f)));
+
 app.get('/login', (req, res) => {
   if (authed(req)) return res.redirect('/');
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
@@ -202,19 +217,74 @@ app.use('/vendor/marked', express.static(path.join(__dirname, 'node_modules/mark
 app.use('/vendor/dompurify', express.static(path.join(__dirname, 'node_modules/dompurify/dist')));
 app.use('/vendor/addon-web-links', express.static(path.join(__dirname, 'node_modules/@xterm/addon-web-links')));
 
+const HOST_LABEL = process.env.HERMES_HOST_LABEL || hostname();
+const VERSION = process.env.HERMES_VERSION || 'dev';
+
 app.get('/api/sessions', async (req, res) => {
   try {
+    // ?seen=a,b → sesiones que una pestaña visible está mostrando (para no avisar al celular)
+    if (typeof req.query.seen === 'string' && req.query.seen) markSeen(req.query.seen.split(',').filter(validName));
     const sessions = await listSessions();
     for (const s of sessions) {
       const saved = s.uuid ? findSession(s.uuid) : null;
       s.saved = saved ? { id: saved.id, name: saved.name, title: saved.title } : null;
+      const file = s.uuid && transcriptPath(s.uuid);
+      s.cost = file ? transcriptInfo(file)?.cost ?? null : null;
     }
-    res.json({ sessions, home: homedir(), host: process.env.HERMES_HOST_LABEL || hostname() });
+    res.json({ sessions, home: homedir(), host: HOST_LABEL, version: VERSION });
   }
   catch (e) { res.status(500).json({ error: e.stderr || e.message }); }
 });
 
 app.use('/api/saved', savedRouter({ tmux, listSessions, shell: SHELL }));
+
+// ---------- cambios (git) del directorio de una sesión ----------
+app.get('/api/sessions/:name/diff', async (req, res) => {
+  const { name } = req.params;
+  if (!validName(name)) return res.status(400).json({ error: 'Nombre inválido' });
+  const s = (await listSessions()).find(x => x.name === name);
+  if (!s) return res.status(404).json({ error: 'No existe la sesión' });
+  try { res.json(await sessionDiff(s.cwd)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---------- uso y costo ----------
+app.get('/api/usage', async (req, res) => {
+  try {
+    const days = Math.max(1, Math.min(31, Number(req.query.days) || 30));
+    res.json(await usageReport({
+      days,
+      sessionInfo: (uuid, file) => {
+        const i = transcriptInfo(file) || {};
+        const sv = findSession(uuid);
+        return { title: sv?.title || i.title || '', cwd: i.cwd || '', saved: sv ? sv.name : null };
+      },
+    }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---------- ajustes / estado ----------
+// HERMES_PEERS="hp=https://hp.tu-tailnet.ts.net,laptop=http://100.x.y.z:7681" → selector de máquinas
+const PEERS = (process.env.HERMES_PEERS || '').split(',').map(x => x.trim()).filter(Boolean).map(x => {
+  const i = x.indexOf('=');
+  return i > 0 ? { name: x.slice(0, i).trim(), url: x.slice(i + 1).trim().replace(/\/$/, '') } : null;
+}).filter(p => p && /^https?:\/\//.test(p.url));
+
+app.get('/api/settings', (req, res) => {
+  res.json({
+    version: VERSION, host: HOST_LABEL, docker: IN_DOCKER, secure: isSecure(req),
+    notify: notifyChannels(), peers: PEERS,
+    backups: { dir: BACKUP_DIR, list: listBackups().slice(0, 5), total: listBackups().length },
+  });
+});
+app.post('/api/notify/test', async (req, res) => {
+  try { res.json(await notifySend('HermesWeb', `Aviso de prueba desde ${HOST_LABEL}`)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.post('/api/backup', (req, res) => {
+  try { res.json({ file: backupNow({ force: true }) }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 app.post('/api/sessions', async (req, res) => {
   const { name, cwd, command } = req.body || {};
@@ -359,6 +429,9 @@ async function initTmux() {
 
 await initTmux();
 getDb();
+startBackups();
+startWatcher({ listSessions, host: HOST_LABEL, baseUrl: (process.env.HERMES_PUBLIC_URL || '').replace(/\/$/, '') });
+refreshUsage().catch(() => {});   // primera lectura de los transcripts en segundo plano
 server.listen(PORT, HOST, () => {
   const shown = HOST === '0.0.0.0' ? 'localhost' : HOST;
   console.log(`HermesWeb escuchando en http://${shown}:${PORT}`);

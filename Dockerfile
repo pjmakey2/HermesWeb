@@ -12,7 +12,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 FROM node:24-trixie-slim
-RUN apt-get update && apt-get install -y --no-install-recommends tmux tini \
+RUN apt-get update && apt-get install -y --no-install-recommends tmux tini git \
  && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production LANG=C.UTF-8 HERMES_IN_DOCKER=1 HOST=0.0.0.0
 WORKDIR /app
