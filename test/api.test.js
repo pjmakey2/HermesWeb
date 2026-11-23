@@ -35,7 +35,8 @@ test('rechaza otro origen, acepta X-Forwarded-Host desde localhost (proxy)', asy
 test('crear sesión, ver su estado y cerrarla', async () => {
   let r = await api('/api/sessions', { method: 'POST', body: JSON.stringify({ name: 'shell1', cwd: '/tmp', command: '' }) });
   assert.equal(r.status, 200, await r.text());
-  const s = await waitFor(async () => (await (await api('/api/sessions')).json()).sessions.find(x => x.name === 'shell1'));
+  // el shell tarda un momento en arrancar; hasta entonces tmux puede informar otra carpeta
+  const s = await waitFor(async () => (await (await api('/api/sessions')).json()).sessions.find(x => x.name === 'shell1' && x.cwd === '/tmp'));
   assert.equal(s.cwd, '/tmp');
   assert.equal(s.state, 'shell');
   r = await api('/api/sessions', { method: 'POST', body: JSON.stringify({ name: 'shell1', cwd: '/tmp', command: '' }) });
