@@ -35,7 +35,7 @@ const LAYOUTS = {
 };
 const savedLayout = JSON.parse(localStorage.getItem('hermes.layout') || '{}');
 if (savedLayout.layout === 'cols3') savedLayout.layout = 'tri'; // nombre anterior
-let layout = LAYOUTS[savedLayout.layout] ? savedLayout.layout : 'single';
+let layout = LAYOUTS[savedLayout.layout] && !matchMedia('(max-width: 700px)').matches ? savedLayout.layout : 'single';
 let panes = Array.isArray(savedLayout.panes) ? savedLayout.panes : [];
 let focused = Number.isInteger(savedLayout.focused) ? savedLayout.focused : 0;
 let zoomed = false;
@@ -118,7 +118,7 @@ function render() {
       : title && !/^(claude( code)?|zsh|bash)$/i.test(title) ? title : prettyPath(s.cwd);
     li.querySelector('.sub').textContent = `${STATE_LABEL[st] || s.command} · ${ago(s.activity)}${s.cost ? ` · $${s.cost.toFixed(2)}` : ''} · ${what}`;
     if (s.saved) li.querySelector('.name').insertAdjacentHTML('beforeend', ' <span class="saved-mark" title="Guardada en el catálogo">★</span>');
-    li.onclick = () => { if (view !== 'terms') setView('terms'); select(s.name); };
+    li.onclick = () => { if (view !== 'terms') setView('terms'); select(s.name); if (phone.matches) setSidebar(true); };
     ul.appendChild(li);
   });
 
@@ -471,15 +471,21 @@ function destroyTerm(name) {
 }
 
 // ---------- barra lateral contraíble ----------
+// En el teléfono el panel es un menú superpuesto: arranca cerrado y no se recuerda
+const phone = matchMedia('(max-width: 700px)');
 function setSidebar(collapsed) {
   document.body.classList.toggle('sidebar-collapsed', collapsed);
-  localStorage.setItem('hermes.sidebarCollapsed', collapsed ? '1' : '');
+  if (!phone.matches) localStorage.setItem('hermes.sidebarCollapsed', collapsed ? '1' : '');
   requestAnimationFrame(() => paneEls.forEach((_, i) => fitPane(i)));
 }
 const toggleSidebar = () => setSidebar(!document.body.classList.contains('sidebar-collapsed'));
 $('#btn-collapse').onclick = toggleSidebar;
 $('#btn-expand').onclick = toggleSidebar;
-setSidebar(!!localStorage.getItem('hermes.sidebarCollapsed'));
+setSidebar(phone.matches || !!localStorage.getItem('hermes.sidebarCollapsed'));
+$('#scrim').onclick = () => setSidebar(true);
+// en el teléfono no hay lugar para varias terminales a la vez
+const phoneLayout = () => { if (phone.matches && layout !== 'single') setLayout('single'); };
+phone.addEventListener('change', () => { phoneLayout(); setSidebar(phone.matches || !!localStorage.getItem('hermes.sidebarCollapsed')); });
 
 // ---------- notificaciones ----------
 function notify(title, body) {
@@ -550,7 +556,7 @@ function setView(v) {
     requestAnimationFrame(() => { paneEls.forEach((_, i) => fitPane(i)); placeSplitters(); terms.get(current)?.term.focus(); });
   }
 }
-document.querySelectorAll('#views button').forEach(b => b.onclick = () => setView(b.dataset.view));
+document.querySelectorAll('#views button').forEach(b => b.onclick = () => { setView(b.dataset.view); if (phone.matches) setSidebar(true); });
 $('#btn-expand-2').onclick = () => toggleSidebar();
 
 saved.init({

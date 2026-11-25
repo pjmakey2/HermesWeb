@@ -33,6 +33,7 @@
       <button id="btn-logout" title="Cerrar sesión de HermesWeb (las sesiones de Claude siguen corriendo)">Salir</button>
     </footer>
   </aside>
+  <div id="scrim" hidden></div>
 
   <main>
     <div id="terms-view">
@@ -56,9 +57,9 @@
         <button id="btn-diff" title="Ver qué cambió en el directorio de la sesión: git status + diff (Alt+Shift+D)">±<span class="lbl"> Cambios</span></button>
         <input type="file" id="file-input" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
         <button id="btn-save-live" title="Guardar esta sesión en el catálogo">★<span class="lbl"> Guardar</span></button>
-        <button id="btn-copy"title="Copiar comando para engancharse desde una terminal">hcw a</button>
-        <button id="btn-rename">Renombrar</button>
-        <button id="btn-kill" class="danger">Cerrar sesión</button>
+        <button id="btn-copy" title="Copiar comando para engancharse desde una terminal">hcw a</button>
+        <button id="btn-rename" title="Renombrar la sesión">✎<span class="lbl"> Renombrar</span></button>
+        <button id="btn-kill" class="danger" title="Cerrar la sesión (termina el proceso)">✕<span class="lbl"> Cerrar sesión</span></button>
         <button id="btn-quick" class="icon" title="Barra de teclas para Claude: Esc, Shift+Tab, respuestas 1/2/3… (Alt+Shift+K)">⌨</button>
         <button id="btn-full" class="icon" title="Pantalla completa: los atajos del navegador (Ctrl+W, Ctrl+T…) llegan a la terminal (Alt+Shift+F)">⛶</button>
       </div>

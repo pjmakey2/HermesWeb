@@ -439,11 +439,35 @@ dialog.wide.settings p button { margin-left: 6px; }
 
 /* pantallas angostas (tablet en vertical, ventanas chicas): botones solo con ícono */
 #hint { gap: 6px; }
-@media (max-width: 1250px) {
+@media (max-width: 1400px) {
   #actions .lbl, #cur-cwd { display: none; }
   #actions { gap: 4px; }
   #layouts { margin-right: 2px; }
 }
 @media (max-width: 1000px) {
   #btn-copy, #conn.ok { display: none; }
+}
+
+/* ---------- teléfono: panel de sesiones como menú superpuesto, una sola terminal ---------- */
+#scrim { display: none; }
+@media (max-width: 700px) {
+  #sidebar {
+    position: fixed; inset: 0 auto 0 0; z-index: 50; width: min(86vw, 340px);
+    box-shadow: 8px 0 24px rgba(0, 0, 0, .5);
+  }
+  body:not(.sidebar-collapsed) #scrim { display: block; position: fixed; inset: 0; z-index: 49; background: rgba(0, 0, 0, .45); }
+  #btn-expand { display: inline-flex; }
+  #btn-collapse { display: none; }
+  #topbar { padding: 6px 8px; gap: 6px; }
+  #current { flex: 1; gap: 6px; }
+  #cur-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #actions { flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  #actions::-webkit-scrollbar { display: none; }
+  #actions button { flex: none; padding: 5px 8px; }
+  #layouts, #conn, #btn-copy { display: none; }
+  #hint { flex-wrap: wrap; }
+  .sv-head, .sv-toolbar { padding-left: 10px; padding-right: 10px; }
+  #sv-q { min-width: 0; flex-basis: 100%; }
+  /* el detalle de una sesión guardada ocupa toda la pantalla (se cierra con su ✕) */
+  .sv-detail { position: fixed; inset: 0; z-index: 40; width: auto; border-left: none; padding: 14px 14px 40px; }
 }
