@@ -58,6 +58,55 @@ function initQuickbar() {
   $('#btn-quick').onclick = () => toggleQuickbar();
 }
 
+// ---------- barra de scroll del teléfono (mueve el historial de tmux) ----------
+function initScrollbar() {
+  const bar = $('#mscroll'), thumb = bar.querySelector('.thumb'), end = bar.querySelector('.to-end');
+  const phone = matchMedia('(max-width: 700px)');
+  let st = { pos: 0, size: 0, height: 0 }, busy = false, pending = null, dragging = false;
+  const geom = () => {
+    const H = bar.clientHeight, total = st.size + st.height || 1;
+    const th = Math.min(H, Math.max(40, H * (st.height || 1) / total));
+    return { H, th };
+  };
+  const draw = () => {
+    const { H, th } = geom();
+    thumb.hidden = !st.size;
+    thumb.style.height = th + 'px';
+    thumb.style.top = (st.size ? (1 - st.pos / st.size) * (H - th) : H - th) + 'px';
+    bar.classList.toggle('scrolled', st.pos > 0);
+    end.hidden = !(st.pos > 0);
+  };
+  const call = async body => {
+    const name = ctx.current();
+    if (!name) return;
+    if (busy) { pending = body; return; }
+    busy = true;
+    try {
+      const r = await fetch(`/api/sessions/${encodeURIComponent(name)}/scroll`, body
+        ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {});
+      if (r.ok) { const s = await r.json(); if (!dragging || !body) st = s; draw(); }
+    } catch {}
+    busy = false;
+    if (pending) { const b = pending; pending = null; call(b); }
+  };
+  const fromY = y => {
+    const { H, th } = geom(), r = bar.getBoundingClientRect();
+    const f = Math.max(0, Math.min(1, (y - r.top - th / 2) / Math.max(1, H - th)));
+    st.pos = Math.round((1 - f) * st.size); draw();
+    call({ to: 1 - f });
+  };
+  bar.addEventListener('pointerdown', e => {
+    if (e.target === end) return;
+    e.preventDefault(); dragging = true; bar.setPointerCapture(e.pointerId); fromY(e.clientY);
+  });
+  bar.addEventListener('pointermove', e => { if (dragging) fromY(e.clientY); });
+  const stop = () => { dragging = false; };
+  bar.addEventListener('pointerup', stop); bar.addEventListener('pointercancel', stop);
+  end.onclick = () => { st.pos = 0; draw(); call({ bottom: true }); ctx.focusTerm(); };
+  // posición actual (cambia también con la rueda, el texto nuevo, etc.)
+  setInterval(() => { if (phone.matches && !document.hidden && !dragging && ctx.current() && bar.offsetParent) call(null); }, 1500);
+}
+
 // ---------- pantalla completa + captura de teclado ----------
 // En pantalla completa, navigator.keyboard.lock() hace que Ctrl+W, Ctrl+T, Ctrl+N, Alt+Tab… lleguen
 // a la terminal en vez de al navegador (Chrome/Edge). Para salir: mantener Esc o el botón.
@@ -223,6 +272,7 @@ export async function loadPeers() {
 export function init(c) {
   ctx = c;
   initQuickbar();
+  initScrollbar();
   updateQuickbar();
   $('#btn-full').onclick = toggleFullscreen;
   $('#btn-diff').onclick = () => openDiff();

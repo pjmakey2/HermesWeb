@@ -248,6 +248,36 @@ app.get('/api/sessions/:name/diff', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ---------- historial de tmux (barra de scroll del teléfono) ----------
+// La terminal web no tiene historial propio: lo guarda tmux. La barra mueve el modo copia de tmux.
+async function scrollState(t) {
+  const { stdout } = await tmux('display-message', '-p', '-t', t, '#{pane_in_mode}|#{scroll_position}|#{history_size}|#{pane_height}');
+  const [mode, pos, size, height] = stdout.trim().split('|');
+  return { mode: mode === '1', pos: Number(pos) || 0, size: Number(size) || 0, height: Number(height) || 0 };
+}
+app.get('/api/sessions/:name/scroll', async (req, res) => {
+  if (!validName(req.params.name)) return res.status(400).json({ error: 'Nombre inválido' });
+  try { res.json(await scrollState(`=${req.params.name}:`)); }
+  catch (e) { res.status(404).json({ error: e.stderr || e.message }); }
+});
+// { to: 0..1 } (fracción del historial, 1 = arriba del todo) | { by: líneas, + hacia arriba } | { bottom: true }
+app.post('/api/sessions/:name/scroll', async (req, res) => {
+  if (!validName(req.params.name)) return res.status(400).json({ error: 'Nombre inválido' });
+  const t = `=${req.params.name}:`, b = req.body || {};
+  try {
+    const s = await scrollState(t);
+    let target = b.bottom ? 0 : b.to != null ? Math.round(Number(b.to) * s.size) : s.pos + Math.round(Number(b.by) || 0);
+    target = Math.max(0, Math.min(s.size, target || 0));
+    if (target === 0) { if (s.mode) await tmux('send-keys', '-t', t, '-X', 'cancel'); }
+    else {
+      if (!s.mode) await tmux('copy-mode', '-e', '-t', t);
+      const d = target - (s.mode ? s.pos : 0);
+      if (d) await tmux('send-keys', '-t', t, '-X', '-N', String(Math.abs(d)), d > 0 ? 'scroll-up' : 'scroll-down');
+    }
+    res.json(await scrollState(t));
+  } catch (e) { res.status(500).json({ error: e.stderr || e.message }); }
+});
+
 // ---------- uso y costo ----------
 app.get('/api/usage', async (req, res) => {
   try {
