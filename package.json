@@ -1,6 +1,6 @@
 {
   "name": "hermesweb",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Web en tiempo real para sesiones de Claude Code en tmux",
   "scripts": {
     "test": "node --test test/*.test.js",
