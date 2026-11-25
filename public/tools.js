@@ -49,6 +49,8 @@ function initQuickbar() {
     const name = ctx.current();
     if (!name) return;
     if (k.startsWith('/')) { ctx.send(name, k); setTimeout(() => ctx.send(name, '\r'), 60); }
+    // salto de línea en Claude Code sin Shift+Enter: "\" + Enter (por separado, para que no parezca un pegado)
+    else if (k === 'nl') { ctx.send(name, '\\'); setTimeout(() => ctx.send(name, '\r'), 60); }
     else ctx.send(name, KEYS[k] ?? k);
     ctx.focusTerm();
   });
