@@ -477,3 +477,30 @@ dialog.wide.settings p button { margin-left: 6px; }
   #mscroll { display: block; position: absolute; top: 0; bottom: 0; right: 0; width: 26px; background: var(--panel); border-left: 1px solid var(--border); touch-action: none; }
   .sv-detail { position: fixed; inset: 0; z-index: 40; width: auto; border-left: none; padding: 14px 14px 40px; }
 }
+
+/* ---------- lanzador estilo rofi (Alt+J / Alt+Shift+J) ---------- */
+dialog.launcher { width: min(760px, 94vw); padding: 22px; border-radius: 16px; background: #1e222a; border-color: #2c313c; margin-top: 12vh; }
+.ln-bar { display: flex; gap: 10px; align-items: center; background: #272c36; border-radius: 999px; padding: 5px; }
+#ln-mode { border: none; border-radius: 999px; background: #61afef; color: #10141b; font-weight: 600; padding: 8px 16px; flex: none; }
+#ln-mode::before { content: "⌕ "; }
+dialog.launcher #ln-q { flex: 1; min-width: 0; border: none; background: none; font: 14px ui-monospace, monospace; color: var(--text); padding: 6px 8px; }
+dialog.launcher #ln-q:focus { border: none; }
+#ln-list { list-style: none; margin: 16px 0 6px; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; max-height: 52vh; overflow-y: auto; }
+#ln-list li { display: flex; align-items: center; gap: 12px; padding: 7px 14px 7px 7px; border-radius: 999px; cursor: pointer; min-width: 0; }
+#ln-list li.on { background: #2c313c; }
+#ln-list li.on b { color: #61afef; }
+.ln-ico { flex: none; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; color: #10141b; background: #5c6370; }
+.ln-ico.idle { background: var(--green); } .ln-ico.busy { background: var(--yellow); } .ln-ico.ask { background: var(--accent); }
+.ln-ico.dead { background: var(--red); } .ln-ico.shell { background: #61afef; } .ln-ico.off { background: #3a404c; color: var(--muted); }
+.ln-txt { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.ln-txt b, .ln-txt small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ln-txt b { font: 600 13.5px ui-monospace, monospace; }
+.ln-txt small { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+.ln-badge { flex: none; font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
+.ln-empty { grid-column: 1 / -1; color: var(--muted); text-align: center; padding: 24px 0; margin: 0; }
+.ln-help { font-size: 11px; color: var(--muted); text-align: center; margin-top: 8px; }
+@media (max-width: 700px) {
+  dialog.launcher { margin-top: 4vh; padding: 14px; }
+  #ln-list { grid-template-columns: 1fr; max-height: 60vh; }
+  .ln-help { display: none; }
+}

@@ -3,6 +3,7 @@ import { FitAddon } from '/vendor/addon-fit/lib/addon-fit.mjs';
 import { WebLinksAddon } from '/vendor/addon-web-links/lib/addon-web-links.mjs';
 import * as saved from '/saved.js';
 import * as tools from '/tools.js';
+import * as launcher from '/launcher.js';
 
 const $ = s => document.querySelector(s);
 const terms = new Map();     // name -> { term, fit, el, ws, retry, closedByUs }
@@ -50,6 +51,13 @@ const stateOf = s => s.state || (SHELLS.has(s.command) ? 'shell' : 'idle');
 const STATE_LABEL = { busy: 'trabajando', idle: 'esperando', ask: 'pide permiso', dead: 'terminada' };
 const prettyPath = p => (home && p?.startsWith(home) ? '~' + p.slice(home.length) : p || '');
 const cleanTitle = t => (t || '').replace(/^[⠀-⣿✳*·\s]+/, '').trim();
+// "esperando · 3m · $1.20 · Título o carpeta" (barra lateral y lanzador)
+function describe(s) {
+  const title = cleanTitle(s.title);
+  const what = s.saved ? (s.saved.title || s.saved.name)
+    : title && !/^(claude( code)?|zsh|bash)$/i.test(title) ? title : prettyPath(s.cwd);
+  return `${STATE_LABEL[stateOf(s)] || s.command} · ${ago(s.activity)}${s.cost ? ` · $${s.cost.toFixed(2)}` : ''} · ${what}`;
+}
 
 function ago(ms) {
   const s = Math.round((Date.now() - ms) / 1000);
@@ -111,12 +119,9 @@ function render() {
       !visible.has(s.name) && s.activity > (lastSeen[s.name] || 0) ? 'unseen' : '',
     ].join(' ');
     li.title = `${s.cwd}\nComando: ${s.command}\nCreada hace ${ago(s.created)}`;
-    const title = cleanTitle(s.title);
     li.innerHTML = `<span class="dot ${st}"></span><span class="name"></span><span class="key">${i < 9 ? 'Alt+' + (i + 1) : ''}</span><span class="sub"></span>`;
     li.querySelector('.name').textContent = s.name;
-    const what = s.saved ? (s.saved.title || s.saved.name)
-      : title && !/^(claude( code)?|zsh|bash)$/i.test(title) ? title : prettyPath(s.cwd);
-    li.querySelector('.sub').textContent = `${STATE_LABEL[st] || s.command} · ${ago(s.activity)}${s.cost ? ` · $${s.cost.toFixed(2)}` : ''} · ${what}`;
+    li.querySelector('.sub').textContent = describe(s);
     if (s.saved) li.querySelector('.name').insertAdjacentHTML('beforeend', ' <span class="saved-mark" title="Guardada en el catálogo">★</span>');
     li.onclick = () => { if (view !== 'terms') setView('terms'); select(s.name); if (phone.matches) setSidebar(true); };
     ul.appendChild(li);
@@ -519,6 +524,7 @@ function handleShortcut(e) {
   }
   if (view === 'saved' && !e.altKey && !e.ctrlKey && !e.metaKey && saved.onKey(e)) return true;
   if (!e.altKey || e.ctrlKey || e.metaKey) return false;
+  if (e.code === 'KeyJ') { e.preventDefault(); launcher.open(e.shiftKey ? 'saved' : 'terms'); return true; }
   if (e.code === 'KeyG' && !e.shiftKey) { e.preventDefault(); setView(view === 'terms' ? 'saved' : 'terms'); return true; }
   if (view === 'saved' && e.code === 'KeyN' && !e.shiftKey) { e.preventDefault(); saved.openForm(); return true; }
   if (e.shiftKey) {
@@ -751,6 +757,26 @@ tools.init({
   send: (name, data) => { const t = terms.get(name); if (t?.ws?.readyState === 1) t.ws.send(enc.encode(data)); },
   focusTerm: () => terms.get(current)?.term.focus(),
   refit: () => requestAnimationFrame(() => { paneEls.forEach((_, i) => fitPane(i)); placeSplitters(); }),
+});
+
+launcher.init({
+  sessions: () => sessions,
+  current: () => current,
+  describe, stateOf,
+  pretty: prettyPath,
+  toast: (m, err) => toast(m, err),
+  focusTerm: () => terms.get(current)?.term.focus(),
+  select: name => { setView('terms'); select(name); if (phone.matches) setSidebar(true); },
+  async openSaved(name, live) {
+    if (live) { setView('terms'); select(live); return; }
+    try {
+      const r = await fetch(`/api/saved/${encodeURIComponent(name)}/open`, { method: 'POST' });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'No se pudo abrir');
+      toast(d.already ? `Ya estaba abierta en «${d.name}»` : d.mode === 'resume' ? `Retomando «${name}»…` : `Iniciando «${name}»…`);
+      setView('terms'); await refresh(); select(d.name);
+    } catch (e) { toast(e.message, true); }
+  },
 });
 
 // ---------- arranque ----------
